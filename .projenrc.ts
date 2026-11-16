@@ -4,6 +4,7 @@ const project = new ProjenCdkConstructLibrary({
   name: 'lambda-saturation-detector',
   description: 'Creates CloudWatch alarms when a Lambda function\'s duration nears its timeout and notifies an existing SNS topic on ALARM.',
   repositoryUrl: 'https://github.com/gammarers-aws-cdk-constructs/lambda-saturation-detector.git',
+  releaseToNpm: true,
   devDeps: [
     '@gammarers/projen-projects@^0.8.1',
   ],
