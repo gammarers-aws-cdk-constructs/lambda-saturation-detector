@@ -1,5 +1,6 @@
 {
   "name": "lambda-saturation-detector",
+  "description": "Creates CloudWatch alarms for configured Lambda saturation signals and notifies an existing SNS topic on ALARM.",
   "repository": {
     "type": "git",
     "url": "https://github.com/gammarers-aws-cdk-constructs/lambda-saturation-detector.git"

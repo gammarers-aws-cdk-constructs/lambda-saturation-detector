@@ -1,9 +1,5 @@
-import { Construct } from 'constructs';
-
-export class MyConstruct extends Construct {
-  constructor(scope: Construct, id: string) {
-    super(scope, id);
-
-    // define resources here...
-  }
-}
+export {
+  LambdaSaturationDetector,
+  type AlarmConfig,
+  type LambdaSaturationDetectorProps,
+} from './lambda-saturation-detector';
