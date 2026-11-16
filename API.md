@@ -7,7 +7,7 @@
 CloudWatch alarms for configured Lambda saturation signals.
 
 Every signal is validated before any alarm is created. With no signals configured,
-the construct creates no alarms. The topic is notified only when an alarm enters ALARM.
+the construct creates no alarms. A topic is notified only when an alarm enters ALARM.
 
 #### Initializers <a name="Initializers" id="lambda-saturation-detector.LambdaSaturationDetector.Initializer"></a>
 
@@ -21,7 +21,7 @@ new LambdaSaturationDetector(scope: Construct, id: string, props: LambdaSaturati
 | --- | --- | --- |
 | <code><a href="#lambda-saturation-detector.LambdaSaturationDetector.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | Parent construct. |
 | <code><a href="#lambda-saturation-detector.LambdaSaturationDetector.Initializer.parameter.id">id</a></code> | <code>string</code> | Construct id. |
-| <code><a href="#lambda-saturation-detector.LambdaSaturationDetector.Initializer.parameter.props">props</a></code> | <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps">LambdaSaturationDetectorProps</a></code> | Alarm topic. |
+| <code><a href="#lambda-saturation-detector.LambdaSaturationDetector.Initializer.parameter.props">props</a></code> | <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps">LambdaSaturationDetectorProps</a></code> | Function, duration signal, and optional alarm topic. |
 
 ---
 
@@ -45,7 +45,7 @@ Construct id.
 
 - *Type:* <a href="#lambda-saturation-detector.LambdaSaturationDetectorProps">LambdaSaturationDetectorProps</a>
 
-Alarm topic.
+Function, duration signal, and optional alarm topic.
 
 The construct does not create a topic.
 
@@ -150,7 +150,7 @@ The tree node.
 
 ---
 
-##### `alarmTopic`<sup>Required</sup> <a name="alarmTopic" id="lambda-saturation-detector.LambdaSaturationDetector.property.alarmTopic"></a>
+##### `alarmTopic`<sup>Optional</sup> <a name="alarmTopic" id="lambda-saturation-detector.LambdaSaturationDetector.property.alarmTopic"></a>
 
 ```typescript
 public readonly alarmTopic: ITopic;
@@ -159,6 +159,8 @@ public readonly alarmTopic: ITopic;
 - *Type:* aws-cdk-lib.aws_sns.ITopic
 
 SNS topic notified when an alarm enters ALARM.
+
+Undefined when no topic was provided. Those alarms have no alarm action.
 
 ---
 
@@ -243,6 +245,70 @@ How to treat missing data.
 
 ---
 
+### DurationNearTimeoutOptions <a name="DurationNearTimeoutOptions" id="lambda-saturation-detector.DurationNearTimeoutOptions"></a>
+
+p95 and p99 Duration alarms that fire as a function nears its timeout.
+
+Set at least one ratio. The alarm threshold is the timeout in milliseconds multiplied by that ratio, rounded to the nearest integer.
+
+#### Initializer <a name="Initializer" id="lambda-saturation-detector.DurationNearTimeoutOptions.Initializer"></a>
+
+```typescript
+import { DurationNearTimeoutOptions } from 'lambda-saturation-detector'
+
+const durationNearTimeoutOptions: DurationNearTimeoutOptions = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#lambda-saturation-detector.DurationNearTimeoutOptions.property.timeout">timeout</a></code> | <code>aws-cdk-lib.Duration</code> | Function timeout used to compute the alarm threshold. |
+| <code><a href="#lambda-saturation-detector.DurationNearTimeoutOptions.property.p95Ratio">p95Ratio</a></code> | <code>number</code> | Fraction of `timeout` for the p95 Duration alarm. |
+| <code><a href="#lambda-saturation-detector.DurationNearTimeoutOptions.property.p99Ratio">p99Ratio</a></code> | <code>number</code> | Fraction of `timeout` for the p99 Duration alarm. |
+
+---
+
+##### `timeout`<sup>Required</sup> <a name="timeout" id="lambda-saturation-detector.DurationNearTimeoutOptions.property.timeout"></a>
+
+```typescript
+public readonly timeout: Duration;
+```
+
+- *Type:* aws-cdk-lib.Duration
+
+Function timeout used to compute the alarm threshold.
+
+---
+
+##### `p95Ratio`<sup>Optional</sup> <a name="p95Ratio" id="lambda-saturation-detector.DurationNearTimeoutOptions.property.p95Ratio"></a>
+
+```typescript
+public readonly p95Ratio: number;
+```
+
+- *Type:* number
+
+Fraction of `timeout` for the p95 Duration alarm.
+
+Greater than 0 and at most 1. Omit it to skip the p95 alarm.
+
+---
+
+##### `p99Ratio`<sup>Optional</sup> <a name="p99Ratio" id="lambda-saturation-detector.DurationNearTimeoutOptions.property.p99Ratio"></a>
+
+```typescript
+public readonly p99Ratio: number;
+```
+
+- *Type:* number
+
+Fraction of `timeout` for the p99 Duration alarm.
+
+Greater than 0 and at most 1. Omit it to skip the p99 alarm.
+
+---
+
 ### LambdaSaturationDetectorProps <a name="LambdaSaturationDetectorProps" id="lambda-saturation-detector.LambdaSaturationDetectorProps"></a>
 
 Properties for {@link LambdaSaturationDetector}.
@@ -260,20 +326,51 @@ const lambdaSaturationDetectorProps: LambdaSaturationDetectorProps = { ... }
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.alarmTopic">alarmTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | Existing SNS topic notified when an alarm enters ALARM. |
+| <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.durationNearTimeout">durationNearTimeout</a></code> | <code><a href="#lambda-saturation-detector.DurationNearTimeoutOptions">DurationNearTimeoutOptions</a></code> | Alarms when p95 or p99 Duration nears the function timeout. |
+| <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.lambdaFunction">lambdaFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Function whose Duration metric is watched. |
 
 ---
 
-##### `alarmTopic`<sup>Required</sup> <a name="alarmTopic" id="lambda-saturation-detector.LambdaSaturationDetectorProps.property.alarmTopic"></a>
+##### `alarmTopic`<sup>Optional</sup> <a name="alarmTopic" id="lambda-saturation-detector.LambdaSaturationDetectorProps.property.alarmTopic"></a>
 
 ```typescript
 public readonly alarmTopic: ITopic;
 ```
 
 - *Type:* aws-cdk-lib.aws_sns.ITopic
+- *Default:* no topic
 
 Existing SNS topic notified when an alarm enters ALARM.
 
 The construct does not create a topic. OK and INSUFFICIENT_DATA do not notify this topic.
+Omit it to create alarms without an alarm action.
+
+---
+
+##### `durationNearTimeout`<sup>Optional</sup> <a name="durationNearTimeout" id="lambda-saturation-detector.LambdaSaturationDetectorProps.property.durationNearTimeout"></a>
+
+```typescript
+public readonly durationNearTimeout: DurationNearTimeoutOptions;
+```
+
+- *Type:* <a href="#lambda-saturation-detector.DurationNearTimeoutOptions">DurationNearTimeoutOptions</a>
+- *Default:* no duration alarms
+
+Alarms when p95 or p99 Duration nears the function timeout.
+
+---
+
+##### `lambdaFunction`<sup>Optional</sup> <a name="lambdaFunction" id="lambda-saturation-detector.LambdaSaturationDetectorProps.property.lambdaFunction"></a>
+
+```typescript
+public readonly lambdaFunction: IFunction;
+```
+
+- *Type:* aws-cdk-lib.aws_lambda.IFunction
+
+Function whose Duration metric is watched.
+
+Required when `durationNearTimeout` is set.
 
 ---
 

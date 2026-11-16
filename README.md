@@ -7,27 +7,28 @@
 
 [![View on Construct Hub](https://constructs.dev/badge?package=lambda-saturation-detector)](https://constructs.dev/packages/lambda-saturation-detector)
 
-Creates CloudWatch alarms for configured Lambda saturation signals. An existing SNS topic is notified when an alarm enters the ALARM state.
+Creates CloudWatch alarms when a Lambda function's duration nears its timeout. An existing SNS topic is notified when an alarm enters the ALARM state.
 
 ## Features
 
-- Notifies an existing SNS topic when a saturation alarm enters ALARM
+- Alarms when p95 or p99 Duration nears the function timeout
+- Notifies an existing SNS topic on ALARM when a topic is provided
 - Creates no alarms when no signals are configured
 - Validates every signal before creating any alarm
 - Treats missing metric data as not breaching by default
 
 ## How it works
 
-1. Pass an existing SNS topic as `alarmTopic`. This construct does not create a topic.
-2. Configured signals are validated first. If validation fails, no alarms are created, including alarms for signals that were already checked.
-3. One CloudWatch alarm is then created for each valid signal. No signals are configured by props today, so the construct creates no alarms.
-4. The topic is notified only when an alarm enters ALARM. OK and INSUFFICIENT_DATA do not publish to the topic.
+1. Pass the function as `lambdaFunction` and the signal as `durationNearTimeout`. Pass an existing SNS topic as `alarmTopic` when notifications are needed. This construct does not create a topic.
+2. Configured signals are validated first. If validation fails, no alarms are created, including alarms for ratios that were already checked.
+3. One CloudWatch alarm is then created for each requested percentile. With no `durationNearTimeout`, the construct creates no alarms.
+4. The threshold is the timeout in milliseconds multiplied by the ratio, rounded to the nearest integer. p95 uses the `p95` statistic and p99 uses `p99`, both on the function's Duration metric.
+5. The topic is notified only when an alarm enters ALARM. OK and INSUFFICIENT_DATA do not publish to the topic. Omitting `alarmTopic` leaves the alarms without an alarm action.
 
-Alarm defaults below are used when a signal does not override them. Overrides are not configurable via props today.
+Period, evaluation periods, and missing-data treatment below are not configurable via props today. The generic threshold of 1 is not used for the duration signal.
 
 | Setting | Default |
 | --- | --- |
-| Threshold | 1 |
 | Period | 5 minutes |
 | Evaluation periods | 1 |
 | Missing data | not breaching |
@@ -59,7 +60,8 @@ pnpm add lambda-saturation-detector
 Use an inline stack when you want a dedicated stack you can deploy as-is. This package does not publish a stack class.
 
 ```typescript
-import { App, Stack } from 'aws-cdk-lib';
+import { App, Duration, Stack } from 'aws-cdk-lib';
+import { Code, Function, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { Topic } from 'aws-cdk-lib/aws-sns';
 import { LambdaSaturationDetector } from 'lambda-saturation-detector';
 
@@ -72,9 +74,22 @@ const stack = new Stack(app, 'LambdaSaturationDetectorStack', {
 });
 
 const alarmTopic = new Topic(stack, 'AlarmTopic');
+const timeout = Duration.seconds(10);
+const lambdaFunction = new Function(stack, 'Worker', {
+  runtime: Runtime.NODEJS_20_X,
+  handler: 'index.handler',
+  code: Code.fromInline('exports.handler = async () => undefined;'),
+  timeout,
+});
 
 new LambdaSaturationDetector(stack, 'LambdaSaturationDetector', {
   alarmTopic,
+  lambdaFunction,
+  durationNearTimeout: {
+    timeout,
+    p95Ratio: 0.8,
+    p99Ratio: 0.9,
+  },
 });
 
 app.synth();
@@ -83,18 +98,23 @@ app.synth();
 Deploy checklist:
 
 1. Install this package and peers (`aws-cdk-lib`, `constructs`) in your CDK app.
-2. Provide an SNS topic. The sample creates one in the stack. You can pass an existing topic instead.
-3. From the CDK app: `npx cdk deploy LambdaSaturationDetectorStack`
+2. Provide the Lambda function to watch. The sample creates one. Set `durationNearTimeout.timeout` to that function's timeout.
+3. Provide an SNS topic when ALARM notifications are needed. The sample creates one. Omit `alarmTopic` to create alarms without an action.
+4. From the CDK app: `npx cdk deploy LambdaSaturationDetectorStack`
 
 ## Options
 
 | Name | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `alarmTopic` | `ITopic` | Yes | | Existing SNS topic for the ALARM action. The construct does not create this topic. |
-| `AlarmConfig.threshold` | `number` | No | `1` | Per-signal threshold. Not configurable via props today. |
-| `AlarmConfig.period` | `Duration` | No | 5 minutes | Per-signal period. Not configurable via props today. |
-| `AlarmConfig.evaluationPeriods` | `number` | No | `1` | Per-signal evaluation periods. Not configurable via props today. |
-| `AlarmConfig.treatMissingData` | `TreatMissingData` | No | `NOT_BREACHING` | Per-signal missing-data treatment. Not configurable via props today. |
+| `alarmTopic` | `ITopic` | No | none | Existing SNS topic for the ALARM action. The construct does not create this topic. Omit it to create alarms without an action. |
+| `lambdaFunction` | `IFunction` | When `durationNearTimeout` is set | none | Function whose Duration metric is watched. |
+| `durationNearTimeout` | `DurationNearTimeoutOptions` | No | none | p95 and p99 alarms that fire as Duration nears the function timeout. |
+| `durationNearTimeout.timeout` | `Duration` | Yes, when the signal is set | | Function timeout. Must be greater than 0. |
+| `durationNearTimeout.p95Ratio` | `number` | One of the ratios | none | Fraction of `timeout` for p95. Greater than 0 and at most 1. |
+| `durationNearTimeout.p99Ratio` | `number` | One of the ratios | none | Fraction of `timeout` for p99. Greater than 0 and at most 1. |
+| `AlarmConfig.period` | `Duration` | No | 5 minutes | Alarm period. Not configurable via props today. |
+| `AlarmConfig.evaluationPeriods` | `number` | No | `1` | Evaluation periods. Not configurable via props today. |
+| `AlarmConfig.treatMissingData` | `TreatMissingData` | No | `NOT_BREACHING` | Missing-data treatment. Not configurable via props today. |
 
 ## API
 
