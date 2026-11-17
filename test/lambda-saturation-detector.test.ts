@@ -505,3 +505,104 @@ test('creates no alarms when spillover is invalid after valid signals', () => {
   })).toThrow('resource must not be blank.');
   Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 0);
 });
+
+const everySignal = {
+  durationNearTimeout: {
+    timeout: Duration.seconds(10),
+    p95Ratio: 0.8,
+    p99Ratio: 0.95,
+  },
+  concurrentExecutions: { threshold: 25 },
+  provisionedConcurrencySpillover: { resource: 'live' },
+};
+
+const expectEveryAlarmAction = (stack: Stack, alarmTopic: Topic | undefined) => {
+  const alarms = Object.values(Template.fromStack(stack).findResources('AWS::CloudWatch::Alarm')) as Array<{
+    Properties: {
+      MetricName?: string;
+      AlarmActions?: unknown[];
+      OKActions?: unknown[];
+      InsufficientDataActions?: unknown[];
+    };
+  }>;
+
+  expect(alarms).toHaveLength(4);
+  expect(alarms.filter((alarm) => alarm.Properties.MetricName === 'Duration')).toHaveLength(2);
+  expect(alarms.map((alarm) => alarm.Properties.MetricName)).toEqual(expect.arrayContaining([
+    'ConcurrentExecutions',
+    'ProvisionedConcurrencySpilloverInvocations',
+  ]));
+
+  for (const alarm of alarms) {
+    expect(alarm.Properties.OKActions).toBeUndefined();
+    expect(alarm.Properties.InsufficientDataActions).toBeUndefined();
+    if (alarmTopic === undefined) {
+      expect(alarm.Properties.AlarmActions).toBeUndefined();
+      continue;
+    }
+
+    expect(alarm.Properties.AlarmActions).toEqual([stack.resolve(alarmTopic.topicArn)]);
+  }
+};
+
+test.each([
+  {
+    name: 'duration',
+    signals: {
+      ...everySignal,
+      durationNearTimeout: {
+        timeout: Duration.seconds(10),
+        p95Ratio: 0.8,
+        p99Ratio: Number.NaN,
+      },
+    },
+    message: 'p99Ratio must be greater than 0 and at most 1.',
+  },
+  {
+    name: 'concurrent executions',
+    signals: {
+      ...everySignal,
+      concurrentExecutions: { threshold: 0 },
+    },
+    message: 'threshold must be a finite number greater than 0.',
+  },
+  {
+    name: 'provisioned concurrency spillover',
+    signals: {
+      ...everySignal,
+      provisionedConcurrencySpillover: { resource: '   ' },
+    },
+    message: 'resource must not be blank.',
+  },
+])('creates no alarms when every signal is set and $name is invalid', ({ signals, message }) => {
+  const { stack } = createStack();
+
+  expect(() => new LambdaSaturationDetector(stack, 'Detector', {
+    lambdaFunction: worker(stack),
+    ...signals,
+  })).toThrow(message);
+  Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 0);
+});
+
+test('notifies only ALARM for every signal when a topic is provided', () => {
+  const { stack, alarmTopic } = createStack();
+
+  new LambdaSaturationDetector(stack, 'Detector', {
+    alarmTopic,
+    lambdaFunction: worker(stack),
+    ...everySignal,
+  });
+
+  expectEveryAlarmAction(stack, alarmTopic);
+});
+
+test('omits alarm actions for every signal when the topic is omitted', () => {
+  const { stack } = createStack();
+
+  new LambdaSaturationDetector(stack, 'Detector', {
+    lambdaFunction: worker(stack),
+    ...everySignal,
+  });
+
+  expectEveryAlarmAction(stack, undefined);
+});
