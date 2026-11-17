@@ -21,7 +21,7 @@ new LambdaSaturationDetector(scope: Construct, id: string, props: LambdaSaturati
 | --- | --- | --- |
 | <code><a href="#lambda-saturation-detector.LambdaSaturationDetector.Initializer.parameter.scope">scope</a></code> | <code>constructs.Construct</code> | Parent construct. |
 | <code><a href="#lambda-saturation-detector.LambdaSaturationDetector.Initializer.parameter.id">id</a></code> | <code>string</code> | Construct id. |
-| <code><a href="#lambda-saturation-detector.LambdaSaturationDetector.Initializer.parameter.props">props</a></code> | <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps">LambdaSaturationDetectorProps</a></code> | Function, duration signal, and optional alarm topic. |
+| <code><a href="#lambda-saturation-detector.LambdaSaturationDetector.Initializer.parameter.props">props</a></code> | <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps">LambdaSaturationDetectorProps</a></code> | Function, signals, and optional alarm topic. |
 
 ---
 
@@ -45,7 +45,7 @@ Construct id.
 
 - *Type:* <a href="#lambda-saturation-detector.LambdaSaturationDetectorProps">LambdaSaturationDetectorProps</a>
 
-Function, duration signal, and optional alarm topic.
+Function, signals, and optional alarm topic.
 
 The construct does not create a topic.
 
@@ -245,6 +245,43 @@ How to treat missing data.
 
 ---
 
+### ConcurrentExecutionsOptions <a name="ConcurrentExecutionsOptions" id="lambda-saturation-detector.ConcurrentExecutionsOptions"></a>
+
+Alarm when ConcurrentExecutions reaches a threshold.
+
+The metric is AWS/Lambda ConcurrentExecutions with the FunctionName dimension and the Maximum statistic.
+`alarmConfig.threshold` does not change this threshold.
+
+#### Initializer <a name="Initializer" id="lambda-saturation-detector.ConcurrentExecutionsOptions.Initializer"></a>
+
+```typescript
+import { ConcurrentExecutionsOptions } from 'lambda-saturation-detector'
+
+const concurrentExecutionsOptions: ConcurrentExecutionsOptions = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#lambda-saturation-detector.ConcurrentExecutionsOptions.property.threshold">threshold</a></code> | <code>number</code> | Alarm threshold. |
+
+---
+
+##### `threshold`<sup>Required</sup> <a name="threshold" id="lambda-saturation-detector.ConcurrentExecutionsOptions.property.threshold"></a>
+
+```typescript
+public readonly threshold: number;
+```
+
+- *Type:* number
+
+Alarm threshold.
+
+Must be a finite number greater than 0.
+
+---
+
 ### DurationNearTimeoutOptions <a name="DurationNearTimeoutOptions" id="lambda-saturation-detector.DurationNearTimeoutOptions"></a>
 
 p95 and p99 Duration alarms that fire as a function nears its timeout.
@@ -325,9 +362,30 @@ const lambdaSaturationDetectorProps: LambdaSaturationDetectorProps = { ... }
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
+| <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.alarmConfig">alarmConfig</a></code> | <code><a href="#lambda-saturation-detector.AlarmConfig">AlarmConfig</a></code> | Shared alarm settings. |
 | <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.alarmTopic">alarmTopic</a></code> | <code>aws-cdk-lib.aws_sns.ITopic</code> | Existing SNS topic notified when an alarm enters ALARM. |
+| <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.concurrentExecutions">concurrentExecutions</a></code> | <code><a href="#lambda-saturation-detector.ConcurrentExecutionsOptions">ConcurrentExecutionsOptions</a></code> | Alarm when concurrent executions reach {@link ConcurrentExecutionsOptions.threshold}. |
 | <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.durationNearTimeout">durationNearTimeout</a></code> | <code><a href="#lambda-saturation-detector.DurationNearTimeoutOptions">DurationNearTimeoutOptions</a></code> | Alarms when p95 or p99 Duration nears the function timeout. |
-| <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.lambdaFunction">lambdaFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Function whose Duration metric is watched. |
+| <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.lambdaFunction">lambdaFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Function whose metrics are watched. |
+| <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.provisionedConcurrencySpillover">provisionedConcurrencySpillover</a></code> | <code><a href="#lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions">ProvisionedConcurrencySpilloverOptions</a></code> | Alarm when provisioned concurrency invocations spill over. |
+
+---
+
+##### `alarmConfig`<sup>Optional</sup> <a name="alarmConfig" id="lambda-saturation-detector.LambdaSaturationDetectorProps.property.alarmConfig"></a>
+
+```typescript
+public readonly alarmConfig: AlarmConfig;
+```
+
+- *Type:* <a href="#lambda-saturation-detector.AlarmConfig">AlarmConfig</a>
+- *Default:* threshold 1
+
+Shared alarm settings.
+
+`threshold` applies to provisioned concurrency spillover when that signal omits its own threshold.
+Duration alarms keep their computed threshold, and concurrent executions use
+{@link ConcurrentExecutionsOptions.threshold}.
+Period, evaluation periods, and missing-data treatment stay at the detector defaults.
 
 ---
 
@@ -344,6 +402,19 @@ Existing SNS topic notified when an alarm enters ALARM.
 
 The construct does not create a topic. OK and INSUFFICIENT_DATA do not notify this topic.
 Omit it to create alarms without an alarm action.
+
+---
+
+##### `concurrentExecutions`<sup>Optional</sup> <a name="concurrentExecutions" id="lambda-saturation-detector.LambdaSaturationDetectorProps.property.concurrentExecutions"></a>
+
+```typescript
+public readonly concurrentExecutions: ConcurrentExecutionsOptions;
+```
+
+- *Type:* <a href="#lambda-saturation-detector.ConcurrentExecutionsOptions">ConcurrentExecutionsOptions</a>
+- *Default:* no concurrent executions alarm
+
+Alarm when concurrent executions reach {@link ConcurrentExecutionsOptions.threshold}.
 
 ---
 
@@ -368,9 +439,76 @@ public readonly lambdaFunction: IFunction;
 
 - *Type:* aws-cdk-lib.aws_lambda.IFunction
 
-Function whose Duration metric is watched.
+Function whose metrics are watched.
 
-Required when `durationNearTimeout` is set.
+Required when `durationNearTimeout`, `concurrentExecutions`, or `provisionedConcurrencySpillover` is set.
+
+---
+
+##### `provisionedConcurrencySpillover`<sup>Optional</sup> <a name="provisionedConcurrencySpillover" id="lambda-saturation-detector.LambdaSaturationDetectorProps.property.provisionedConcurrencySpillover"></a>
+
+```typescript
+public readonly provisionedConcurrencySpillover: ProvisionedConcurrencySpilloverOptions;
+```
+
+- *Type:* <a href="#lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions">ProvisionedConcurrencySpilloverOptions</a>
+- *Default:* no provisioned concurrency spillover alarm
+
+Alarm when provisioned concurrency invocations spill over.
+
+---
+
+### ProvisionedConcurrencySpilloverOptions <a name="ProvisionedConcurrencySpilloverOptions" id="lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions"></a>
+
+Alarm when provisioned concurrency invocations spill over.
+
+The metric is AWS/Lambda ProvisionedConcurrencySpilloverInvocations with the Sum statistic.
+Set `resource` to add the Resource dimension next to FunctionName. Omit `threshold` to use
+{@link LambdaSaturationDetectorProps.alarmConfig}, which defaults to 1.
+
+#### Initializer <a name="Initializer" id="lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions.Initializer"></a>
+
+```typescript
+import { ProvisionedConcurrencySpilloverOptions } from 'lambda-saturation-detector'
+
+const provisionedConcurrencySpilloverOptions: ProvisionedConcurrencySpilloverOptions = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions.property.resource">resource</a></code> | <code>string</code> | Resource dimension value, such as an alias or version name. |
+| <code><a href="#lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions.property.threshold">threshold</a></code> | <code>number</code> | Alarm threshold. |
+
+---
+
+##### `resource`<sup>Optional</sup> <a name="resource" id="lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions.property.resource"></a>
+
+```typescript
+public readonly resource: string;
+```
+
+- *Type:* string
+
+Resource dimension value, such as an alias or version name.
+
+Stored as given. A blank value is rejected. Omit it to watch FunctionName only.
+
+---
+
+##### `threshold`<sup>Optional</sup> <a name="threshold" id="lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions.property.threshold"></a>
+
+```typescript
+public readonly threshold: number;
+```
+
+- *Type:* number
+- *Default:* alarmConfig.threshold, or 1
+
+Alarm threshold.
+
+Must be a finite number greater than 0 when set. Overrides `alarmConfig.threshold`.
 
 ---
 
