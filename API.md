@@ -367,6 +367,7 @@ const lambdaSaturationDetectorProps: LambdaSaturationDetectorProps = { ... }
 | <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.concurrentExecutions">concurrentExecutions</a></code> | <code><a href="#lambda-saturation-detector.ConcurrentExecutionsOptions">ConcurrentExecutionsOptions</a></code> | Alarm when concurrent executions reach {@link ConcurrentExecutionsOptions.threshold}. |
 | <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.durationNearTimeout">durationNearTimeout</a></code> | <code><a href="#lambda-saturation-detector.DurationNearTimeoutOptions">DurationNearTimeoutOptions</a></code> | Alarms when p95 or p99 Duration nears the function timeout. |
 | <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.lambdaFunction">lambdaFunction</a></code> | <code>aws-cdk-lib.aws_lambda.IFunction</code> | Function whose metrics are watched. |
+| <code><a href="#lambda-saturation-detector.LambdaSaturationDetectorProps.property.provisionedConcurrencySpillover">provisionedConcurrencySpillover</a></code> | <code><a href="#lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions">ProvisionedConcurrencySpilloverOptions</a></code> | Alarm when provisioned concurrency invocations spill over. |
 
 ---
 
@@ -381,8 +382,9 @@ public readonly alarmConfig: AlarmConfig;
 
 Shared alarm settings.
 
+`threshold` applies to provisioned concurrency spillover when that signal omits its own threshold.
 Duration alarms keep their computed threshold, and concurrent executions use
-{@link ConcurrentExecutionsOptions.threshold}. Neither signal uses `alarmConfig.threshold`.
+{@link ConcurrentExecutionsOptions.threshold}.
 Period, evaluation periods, and missing-data treatment stay at the detector defaults.
 
 ---
@@ -439,7 +441,74 @@ public readonly lambdaFunction: IFunction;
 
 Function whose metrics are watched.
 
-Required when `durationNearTimeout` or `concurrentExecutions` is set.
+Required when `durationNearTimeout`, `concurrentExecutions`, or `provisionedConcurrencySpillover` is set.
+
+---
+
+##### `provisionedConcurrencySpillover`<sup>Optional</sup> <a name="provisionedConcurrencySpillover" id="lambda-saturation-detector.LambdaSaturationDetectorProps.property.provisionedConcurrencySpillover"></a>
+
+```typescript
+public readonly provisionedConcurrencySpillover: ProvisionedConcurrencySpilloverOptions;
+```
+
+- *Type:* <a href="#lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions">ProvisionedConcurrencySpilloverOptions</a>
+- *Default:* no provisioned concurrency spillover alarm
+
+Alarm when provisioned concurrency invocations spill over.
+
+---
+
+### ProvisionedConcurrencySpilloverOptions <a name="ProvisionedConcurrencySpilloverOptions" id="lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions"></a>
+
+Alarm when provisioned concurrency invocations spill over.
+
+The metric is AWS/Lambda ProvisionedConcurrencySpilloverInvocations with the Sum statistic.
+Set `resource` to add the Resource dimension next to FunctionName. Omit `threshold` to use
+{@link LambdaSaturationDetectorProps.alarmConfig}, which defaults to 1.
+
+#### Initializer <a name="Initializer" id="lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions.Initializer"></a>
+
+```typescript
+import { ProvisionedConcurrencySpilloverOptions } from 'lambda-saturation-detector'
+
+const provisionedConcurrencySpilloverOptions: ProvisionedConcurrencySpilloverOptions = { ... }
+```
+
+#### Properties <a name="Properties" id="Properties"></a>
+
+| **Name** | **Type** | **Description** |
+| --- | --- | --- |
+| <code><a href="#lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions.property.resource">resource</a></code> | <code>string</code> | Resource dimension value, such as an alias or version name. |
+| <code><a href="#lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions.property.threshold">threshold</a></code> | <code>number</code> | Alarm threshold. |
+
+---
+
+##### `resource`<sup>Optional</sup> <a name="resource" id="lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions.property.resource"></a>
+
+```typescript
+public readonly resource: string;
+```
+
+- *Type:* string
+
+Resource dimension value, such as an alias or version name.
+
+Stored as given. A blank value is rejected. Omit it to watch FunctionName only.
+
+---
+
+##### `threshold`<sup>Optional</sup> <a name="threshold" id="lambda-saturation-detector.ProvisionedConcurrencySpilloverOptions.property.threshold"></a>
+
+```typescript
+public readonly threshold: number;
+```
+
+- *Type:* number
+- *Default:* alarmConfig.threshold, or 1
+
+Alarm threshold.
+
+Must be a finite number greater than 0 when set. Overrides `alarmConfig.threshold`.
 
 ---
 

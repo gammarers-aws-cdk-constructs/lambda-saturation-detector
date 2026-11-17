@@ -38,6 +38,21 @@ const STATISTIC_MAXIMUM = Stats.MAXIMUM;
 /** Construct id for the concurrent executions alarm. */
 const CONCURRENT_EXECUTIONS_ALARM_ID = 'ConcurrentExecutions';
 
+/** ProvisionedConcurrencySpilloverInvocations metric on the AWS/Lambda namespace. */
+const METRIC_PROVISIONED_CONCURRENCY_SPILLOVER = 'ProvisionedConcurrencySpilloverInvocations';
+
+/** Sum statistic for the provisioned concurrency spillover alarm. */
+const STATISTIC_SUM = Stats.SUM;
+
+/** FunctionName dimension on Lambda metrics. */
+const DIMENSION_FUNCTION_NAME = 'FunctionName';
+
+/** Resource dimension on the provisioned concurrency spillover metric. */
+const DIMENSION_RESOURCE = 'Resource';
+
+/** Construct id for the provisioned concurrency spillover alarm. */
+const PROVISIONED_CONCURRENCY_SPILLOVER_ALARM_ID = 'ProvisionedConcurrencySpillover';
+
 type DurationRatioField = 'p95Ratio' | 'p99Ratio';
 
 /**
@@ -362,7 +377,7 @@ const resolveDurationSignals = (props: LambdaSaturationDetectorProps): SignalDra
 /**
  * Rejects a threshold that is not finite or is not greater than 0.
  *
- * @param threshold Candidate threshold on {@link ConcurrentExecutionsOptions}.
+ * @param threshold Candidate threshold.
  * @throws Error when `threshold` is not a finite number greater than 0.
  */
 const ensurePositiveThreshold = (threshold: number): void => {
@@ -425,10 +440,151 @@ const resolveConcurrentExecutionsSignals = (props: LambdaSaturationDetectorProps
 };
 
 /**
+ * Rejects a spillover resource that is only whitespace.
+ *
+ * An omitted resource is allowed. The stored value is not trimmed.
+ *
+ * @param resource Resource dimension value on {@link ProvisionedConcurrencySpilloverOptions}.
+ * @throws Error when `resource` is blank.
+ */
+const ensureSpilloverResource = (resource: string | undefined): void => {
+  if (resource === undefined || resource.trim().length > 0) {
+    return;
+  }
+
+  throw new Error('resource must not be blank.');
+};
+
+/**
+ * Checks an explicit spillover threshold.
+ *
+ * An omitted threshold is allowed and falls back to {@link AlarmConfig.threshold}.
+ *
+ * @param threshold Threshold on {@link ProvisionedConcurrencySpilloverOptions}.
+ * @throws Error when `threshold` is set and is not a finite number greater than 0.
+ */
+const ensurePresentPositiveThreshold = (threshold: number | undefined): void => {
+  if (threshold === undefined) {
+    return;
+  }
+
+  ensurePositiveThreshold(threshold);
+};
+
+/**
+ * Chooses the spillover alarm threshold.
+ *
+ * An explicit threshold wins. Otherwise {@link AlarmConfig.threshold} is used, which defaults to 1.
+ *
+ * @param options Spillover options. An explicit threshold has already been checked.
+ * @param alarmConfig Shared alarm settings.
+ * @returns Threshold passed to the alarm.
+ */
+const resolveSpilloverThreshold = (
+  options: ProvisionedConcurrencySpilloverOptions,
+  alarmConfig: AlarmConfig | undefined,
+): number => {
+  if (options.threshold !== undefined) {
+    return options.threshold;
+  }
+
+  return resolveAlarmConfig(alarmConfig).threshold;
+};
+
+/**
+ * Builds the spillover metric.
+ *
+ * Passing `dimensionsMap` replaces the FunctionName dimension that `metric` adds,
+ * so a resource includes both FunctionName and Resource. An omitted resource keeps FunctionName only.
+ *
+ * @param lambdaFunction Function whose spillover metric is watched.
+ * @param period Metric period.
+ * @param resource Resource dimension value, or undefined to omit that dimension.
+ * @returns Metric for the spillover alarm.
+ */
+const spilloverMetric = (
+  lambdaFunction: IFunction,
+  period: Duration,
+  resource: string | undefined,
+): Metric => {
+  if (resource === undefined) {
+    return lambdaFunction.metric(METRIC_PROVISIONED_CONCURRENCY_SPILLOVER, {
+      statistic: STATISTIC_SUM,
+      period,
+    });
+  }
+
+  return lambdaFunction.metric(METRIC_PROVISIONED_CONCURRENCY_SPILLOVER, {
+    statistic: STATISTIC_SUM,
+    period,
+    dimensionsMap: {
+      [DIMENSION_FUNCTION_NAME]: lambdaFunction.functionName,
+      [DIMENSION_RESOURCE]: resource,
+    },
+  });
+};
+
+/**
+ * Builds the provisioned concurrency spillover alarm draft.
+ *
+ * @param lambdaFunction Function whose spillover metric is watched.
+ * @param threshold Resolved threshold.
+ * @param resource Resource dimension value, or undefined when that dimension is omitted.
+ * @returns A draft that has not created an alarm yet.
+ */
+const provisionedConcurrencySpilloverSignal = (
+  lambdaFunction: IFunction,
+  threshold: number,
+  resource: string | undefined,
+): SignalDraft => {
+  const resolved = resolveAlarmConfig({ threshold });
+
+  return {
+    id: PROVISIONED_CONCURRENCY_SPILLOVER_ALARM_ID,
+    metric: spilloverMetric(lambdaFunction, resolved.period, resource),
+    comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    alarm: resolved,
+  };
+};
+
+/**
+ * Validates the spillover signal, then returns its alarm draft.
+ *
+ * An omitted option produces no drafts. Any failure throws before an alarm exists.
+ *
+ * @param props Detector properties.
+ * @returns One draft, or an empty list when the signal is not configured.
+ * @throws Error when `resource` is blank, an explicit `threshold` is invalid, or `lambdaFunction` is missing.
+ */
+const resolveProvisionedConcurrencySpilloverSignals = (
+  props: LambdaSaturationDetectorProps,
+): SignalDraft[] => {
+  const options = props.provisionedConcurrencySpillover;
+  if (options === undefined) {
+    return [];
+  }
+
+  ensureSpilloverResource(options.resource);
+  ensurePresentPositiveThreshold(options.threshold);
+  const lambdaFunction = props.lambdaFunction;
+  if (lambdaFunction === undefined) {
+    throw new Error('lambdaFunction is required.');
+  }
+
+  return [
+    provisionedConcurrencySpilloverSignal(
+      lambdaFunction,
+      resolveSpilloverThreshold(options, props.alarmConfig),
+      options.resource,
+    ),
+  ];
+};
+
+/**
  * Validates every configured signal, then returns the drafts to create.
  *
- * Duration is checked before concurrent executions. A failure in either throws
- * before {@link applySignals} creates an alarm.
+ * Duration is checked first, then concurrent executions, then provisioned concurrency spillover.
+ * A failure in any signal throws before {@link applySignals} creates an alarm.
  *
  * @param props Detector properties.
  * @returns Drafts for the configured signals. Empty when none are configured.
@@ -436,6 +592,7 @@ const resolveConcurrentExecutionsSignals = (props: LambdaSaturationDetectorProps
 const resolveSignals = (props: LambdaSaturationDetectorProps): SignalDraft[] => [
   ...resolveDurationSignals(props),
   ...resolveConcurrentExecutionsSignals(props),
+  ...resolveProvisionedConcurrencySpilloverSignals(props),
 ];
 
 /**
@@ -511,6 +668,30 @@ export interface ConcurrentExecutionsOptions {
 }
 
 /**
+ * Alarm when provisioned concurrency invocations spill over.
+ *
+ * The metric is AWS/Lambda ProvisionedConcurrencySpilloverInvocations with the Sum statistic.
+ * Set `resource` to add the Resource dimension next to FunctionName. Omit `threshold` to use
+ * {@link LambdaSaturationDetectorProps.alarmConfig}, which defaults to 1.
+ */
+export interface ProvisionedConcurrencySpilloverOptions {
+  /**
+   * Resource dimension value, such as an alias or version name.
+   *
+   * Stored as given. A blank value is rejected. Omit it to watch FunctionName only.
+   */
+  readonly resource?: string;
+  /**
+   * Alarm threshold.
+   *
+   * Must be a finite number greater than 0 when set. Overrides `alarmConfig.threshold`.
+   *
+   * @default alarmConfig.threshold, or 1
+   */
+  readonly threshold?: number;
+}
+
+/**
  * Properties for {@link LambdaSaturationDetector}.
  */
 export interface LambdaSaturationDetectorProps {
@@ -526,8 +707,9 @@ export interface LambdaSaturationDetectorProps {
   /**
    * Shared alarm settings.
    *
+   * `threshold` applies to provisioned concurrency spillover when that signal omits its own threshold.
    * Duration alarms keep their computed threshold, and concurrent executions use
-   * {@link ConcurrentExecutionsOptions.threshold}. Neither signal uses `alarmConfig.threshold`.
+   * {@link ConcurrentExecutionsOptions.threshold}.
    * Period, evaluation periods, and missing-data treatment stay at the detector defaults.
    *
    * @default threshold 1
@@ -536,7 +718,7 @@ export interface LambdaSaturationDetectorProps {
   /**
    * Function whose metrics are watched.
    *
-   * Required when `durationNearTimeout` or `concurrentExecutions` is set.
+   * Required when `durationNearTimeout`, `concurrentExecutions`, or `provisionedConcurrencySpillover` is set.
    */
   readonly lambdaFunction?: IFunction;
   /**
@@ -551,6 +733,12 @@ export interface LambdaSaturationDetectorProps {
    * @default no concurrent executions alarm
    */
   readonly concurrentExecutions?: ConcurrentExecutionsOptions;
+  /**
+   * Alarm when provisioned concurrency invocations spill over.
+   *
+   * @default no provisioned concurrency spillover alarm
+   */
+  readonly provisionedConcurrencySpillover?: ProvisionedConcurrencySpilloverOptions;
 }
 
 /**

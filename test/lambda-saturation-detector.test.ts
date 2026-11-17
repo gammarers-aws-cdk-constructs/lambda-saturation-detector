@@ -383,3 +383,125 @@ test('creates no alarms when concurrent executions is invalid after a valid dura
   })).toThrow('threshold must be a finite number greater than 0.');
   Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 0);
 });
+
+const expectSpilloverAlarm = (stack: Stack, threshold: number, resource?: string) => {
+  const template = Template.fromStack(stack);
+  const dimensions = resource === undefined
+    ? Match.not(Match.arrayWith([Match.objectLike({ Name: 'Resource' })]))
+    : Match.arrayWith([
+      Match.objectLike({ Name: 'FunctionName' }),
+      Match.objectLike({ Name: 'Resource', Value: resource }),
+    ]);
+
+  template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+    Threshold: threshold,
+    EvaluationPeriods: 1,
+    TreatMissingData: 'notBreaching',
+    ComparisonOperator: 'GreaterThanOrEqualToThreshold',
+    Statistic: 'Sum',
+    MetricName: 'ProvisionedConcurrencySpilloverInvocations',
+    Namespace: 'AWS/Lambda',
+    Period: Duration.minutes(5).toSeconds(),
+    Dimensions: dimensions,
+  });
+
+  if (resource !== undefined) {
+    return;
+  }
+
+  template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+    MetricName: 'ProvisionedConcurrencySpilloverInvocations',
+    Dimensions: Match.arrayWith([
+      Match.objectLike({ Name: 'FunctionName' }),
+    ]),
+  });
+};
+
+test('stores the spillover resource and uses threshold 1 when it is omitted', () => {
+  const { stack, alarmTopic } = createStack();
+
+  new LambdaSaturationDetector(stack, 'Detector', {
+    alarmTopic,
+    lambdaFunction: worker(stack),
+    provisionedConcurrencySpillover: { resource: 'live' },
+  });
+
+  Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 1);
+  expectSpilloverAlarm(stack, 1, 'live');
+});
+
+test('uses alarmConfig.threshold when the spillover threshold is omitted', () => {
+  const { stack } = createStack();
+
+  new LambdaSaturationDetector(stack, 'Detector', {
+    lambdaFunction: worker(stack),
+    alarmConfig: { threshold: 4 },
+    provisionedConcurrencySpillover: {},
+  });
+
+  Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 1);
+  expectSpilloverAlarm(stack, 4);
+});
+
+test('prefers an explicit spillover threshold over alarmConfig.threshold', () => {
+  const { stack } = createStack();
+
+  new LambdaSaturationDetector(stack, 'Detector', {
+    lambdaFunction: worker(stack),
+    alarmConfig: { threshold: 4 },
+    provisionedConcurrencySpillover: {
+      resource: 'live',
+      threshold: 9,
+    },
+  });
+
+  Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 1);
+  expectSpilloverAlarm(stack, 9, 'live');
+});
+
+test.each(['', '   '])('rejects a blank spillover resource %p', (resource) => {
+  const { stack } = createStack();
+
+  expect(() => new LambdaSaturationDetector(stack, 'Detector', {
+    lambdaFunction: worker(stack),
+    provisionedConcurrencySpillover: { resource },
+  })).toThrow('resource must not be blank.');
+  Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 0);
+});
+
+test.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+  'rejects spillover threshold %p',
+  (threshold) => {
+    const { stack } = createStack();
+
+    expect(() => new LambdaSaturationDetector(stack, 'Detector', {
+      lambdaFunction: worker(stack),
+      provisionedConcurrencySpillover: { threshold },
+    })).toThrow('threshold must be a finite number greater than 0.');
+    Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 0);
+  },
+);
+
+test('requires lambdaFunction when provisionedConcurrencySpillover is set', () => {
+  const { stack } = createStack();
+
+  expect(() => new LambdaSaturationDetector(stack, 'Detector', {
+    provisionedConcurrencySpillover: { resource: 'live' },
+  })).toThrow('lambdaFunction is required.');
+  Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 0);
+});
+
+test('creates no alarms when spillover is invalid after valid signals', () => {
+  const { stack } = createStack();
+
+  expect(() => new LambdaSaturationDetector(stack, 'Detector', {
+    lambdaFunction: worker(stack),
+    durationNearTimeout: {
+      timeout: Duration.seconds(10),
+      p95Ratio: 0.8,
+    },
+    concurrentExecutions: { threshold: 25 },
+    provisionedConcurrencySpillover: { resource: '   ' },
+  })).toThrow('resource must not be blank.');
+  Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 0);
+});
