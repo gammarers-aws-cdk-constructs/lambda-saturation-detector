@@ -524,32 +524,63 @@ const everySignal = {
   provisionedConcurrencySpillover: { resource: 'live' },
 };
 
+interface AlarmActionProperties {
+  readonly MetricName?: string;
+  readonly AlarmActions?: unknown[];
+  readonly OKActions?: unknown[];
+  readonly InsufficientDataActions?: unknown[];
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isOptionalString = (value: unknown): value is string | undefined =>
+  value === undefined || typeof value === 'string';
+
+const isOptionalUnknownArray = (value: unknown): value is unknown[] | undefined =>
+  value === undefined || Array.isArray(value);
+
+const alarmActionProperties = (resource: unknown): AlarmActionProperties => {
+  if (!isRecord(resource) || !isRecord(resource.Properties)) {
+    throw new Error('alarm resource is missing Properties.');
+  }
+
+  const properties = resource.Properties;
+  if (!isOptionalString(properties.MetricName)
+    || !isOptionalUnknownArray(properties.AlarmActions)
+    || !isOptionalUnknownArray(properties.OKActions)
+    || !isOptionalUnknownArray(properties.InsufficientDataActions)) {
+    throw new Error('alarm resource properties have an unexpected shape.');
+  }
+
+  return {
+    MetricName: properties.MetricName,
+    AlarmActions: properties.AlarmActions,
+    OKActions: properties.OKActions,
+    InsufficientDataActions: properties.InsufficientDataActions,
+  };
+};
+
 const expectEveryAlarmAction = (stack: Stack, alarmTopic: Topic | undefined) => {
-  const alarms = Object.values(Template.fromStack(stack).findResources('AWS::CloudWatch::Alarm')) as Array<{
-    Properties: {
-      MetricName?: string;
-      AlarmActions?: unknown[];
-      OKActions?: unknown[];
-      InsufficientDataActions?: unknown[];
-    };
-  }>;
+  const alarms = Object.values(Template.fromStack(stack).findResources('AWS::CloudWatch::Alarm'))
+    .map((resource) => alarmActionProperties(resource));
 
   expect(alarms).toHaveLength(4);
-  expect(alarms.filter((alarm) => alarm.Properties.MetricName === 'Duration')).toHaveLength(2);
-  expect(alarms.map((alarm) => alarm.Properties.MetricName)).toEqual(expect.arrayContaining([
+  expect(alarms.filter((alarm) => alarm.MetricName === 'Duration')).toHaveLength(2);
+  expect(alarms.map((alarm) => alarm.MetricName)).toEqual(expect.arrayContaining([
     'ConcurrentExecutions',
     'ProvisionedConcurrencySpilloverInvocations',
   ]));
 
   for (const alarm of alarms) {
-    expect(alarm.Properties.OKActions).toBeUndefined();
-    expect(alarm.Properties.InsufficientDataActions).toBeUndefined();
+    expect(alarm.OKActions).toBeUndefined();
+    expect(alarm.InsufficientDataActions).toBeUndefined();
     if (alarmTopic === undefined) {
-      expect(alarm.Properties.AlarmActions).toBeUndefined();
+      expect(alarm.AlarmActions).toBeUndefined();
       continue;
     }
 
-    expect(alarm.Properties.AlarmActions).toEqual([stack.resolve(alarmTopic.topicArn)]);
+    expect(alarm.AlarmActions).toEqual([stack.resolve(alarmTopic.topicArn)]);
   }
 };
 
