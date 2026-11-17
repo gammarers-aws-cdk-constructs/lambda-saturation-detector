@@ -53,6 +53,9 @@ const DIMENSION_RESOURCE = 'Resource';
 /** Construct id for the provisioned concurrency spillover alarm. */
 const PROVISIONED_CONCURRENCY_SPILLOVER_ALARM_ID = 'ProvisionedConcurrencySpillover';
 
+/** Thrown when a signal is set and `lambdaFunction` is omitted. */
+const LAMBDA_FUNCTION_REQUIRED_MESSAGE = 'lambdaFunction is required.';
+
 type DurationRatioField = 'p95Ratio' | 'p99Ratio';
 
 /**
@@ -368,7 +371,7 @@ const resolveDurationSignals = (props: LambdaSaturationDetectorProps): SignalDra
   ensurePresentThreshold(options.timeout, options.p99Ratio, 'p99Ratio');
   const lambdaFunction = props.lambdaFunction;
   if (lambdaFunction === undefined) {
-    throw new Error('lambdaFunction is required.');
+    throw new Error(LAMBDA_FUNCTION_REQUIRED_MESSAGE);
   }
 
   return collectDurationSignals(lambdaFunction, options);
@@ -433,7 +436,7 @@ const resolveConcurrentExecutionsSignals = (props: LambdaSaturationDetectorProps
   ensurePositiveThreshold(options.threshold);
   const lambdaFunction = props.lambdaFunction;
   if (lambdaFunction === undefined) {
-    throw new Error('lambdaFunction is required.');
+    throw new Error(LAMBDA_FUNCTION_REQUIRED_MESSAGE);
   }
 
   return [concurrentExecutionsSignal(lambdaFunction, options.threshold)];
@@ -568,7 +571,7 @@ const resolveProvisionedConcurrencySpilloverSignals = (
   ensurePresentPositiveThreshold(options.threshold);
   const lambdaFunction = props.lambdaFunction;
   if (lambdaFunction === undefined) {
-    throw new Error('lambdaFunction is required.');
+    throw new Error(LAMBDA_FUNCTION_REQUIRED_MESSAGE);
   }
 
   return [
