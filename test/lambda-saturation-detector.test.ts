@@ -645,3 +645,54 @@ test('omits alarm actions for every signal when the topic is omitted', () => {
 
   expectEveryAlarmAction(stack, undefined);
 });
+
+const TopicPresence = {
+  Present: 'present',
+  Omitted: 'omitted',
+} as const;
+
+type TopicPresence = typeof TopicPresence[keyof typeof TopicPresence];
+
+test.each([
+  {
+    name: 'duration with a topic',
+    topic: TopicPresence.Present,
+    signals: {
+      durationNearTimeout: everySignal.durationNearTimeout,
+    },
+  },
+  {
+    name: 'concurrent executions with a topic',
+    topic: TopicPresence.Present,
+    signals: {
+      concurrentExecutions: everySignal.concurrentExecutions,
+    },
+  },
+  {
+    name: 'provisioned concurrency spillover with a topic',
+    topic: TopicPresence.Present,
+    signals: {
+      provisionedConcurrencySpillover: { resource: 'live' },
+    },
+  },
+  {
+    name: 'every signal with a topic',
+    topic: TopicPresence.Present,
+    signals: everySignal,
+  },
+  {
+    name: 'every signal without a topic',
+    topic: TopicPresence.Omitted,
+    signals: everySignal,
+  },
+])('matches the template for $name', ({ topic, signals }) => {
+  const { stack, alarmTopic } = createStack();
+
+  new LambdaSaturationDetector(stack, 'Detector', {
+    alarmTopic: topic === TopicPresence.Present ? alarmTopic : undefined,
+    lambdaFunction: worker(stack),
+    ...signals,
+  });
+
+  expect(Template.fromStack(stack).toJSON()).toMatchSnapshot();
+});
