@@ -1,6 +1,6 @@
 // Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
-exports[`creates no alarms when no signals are configured 1`] = `
+exports[`no signals creates no alarms when no signals are configured 1`] = `
 {
   "Parameters": {
     "BootstrapVersion": {
@@ -44,7 +44,7 @@ exports[`creates no alarms when no signals are configured 1`] = `
 }
 `;
 
-exports[`matches the template for concurrent executions with a topic 1`] = `
+exports[`templates matches the template for concurrent executions with a topic 1`] = `
 {
   "Parameters": {
     "BootstrapVersion": {
@@ -141,7 +141,7 @@ exports[`matches the template for concurrent executions with a topic 1`] = `
 }
 `;
 
-exports[`matches the template for duration with a topic 1`] = `
+exports[`templates matches the template for duration with a topic 1`] = `
 {
   "Parameters": {
     "BootstrapVersion": {
@@ -291,7 +291,7 @@ exports[`matches the template for duration with a topic 1`] = `
 }
 `;
 
-exports[`matches the template for every signal with a topic 1`] = `
+exports[`templates matches the template for every signal with a topic 1`] = `
 {
   "Parameters": {
     "BootstrapVersion": {
@@ -551,7 +551,7 @@ exports[`matches the template for every signal with a topic 1`] = `
 }
 `;
 
-exports[`matches the template for every signal without a topic 1`] = `
+exports[`templates matches the template for every signal without a topic 1`] = `
 {
   "Parameters": {
     "BootstrapVersion": {
@@ -791,7 +791,7 @@ exports[`matches the template for every signal without a topic 1`] = `
 }
 `;
 
-exports[`matches the template for provisioned concurrency spillover with a topic 1`] = `
+exports[`templates matches the template for provisioned concurrency spillover with a topic 1`] = `
 {
   "Parameters": {
     "BootstrapVersion": {
