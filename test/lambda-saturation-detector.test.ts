@@ -303,3 +303,83 @@ test('creates no alarms when one duration ratio is invalid', () => {
     p99Ratio: Number.NaN,
   }, 'p99Ratio must be greater than 0 and at most 1.', true);
 });
+
+const expectConcurrentAlarm = (stack: Stack, threshold: number) => {
+  Template.fromStack(stack).hasResourceProperties('AWS::CloudWatch::Alarm', {
+    Threshold: threshold,
+    EvaluationPeriods: 1,
+    TreatMissingData: 'notBreaching',
+    ComparisonOperator: 'GreaterThanOrEqualToThreshold',
+    Statistic: 'Maximum',
+    ExtendedStatistic: Match.absent(),
+    MetricName: 'ConcurrentExecutions',
+    Namespace: 'AWS/Lambda',
+    Period: Duration.minutes(5).toSeconds(),
+    Dimensions: Match.arrayWith([
+      Match.objectLike({ Name: 'FunctionName' }),
+    ]),
+  });
+};
+
+test('creates a concurrent executions alarm with Maximum and the given threshold', () => {
+  const { stack, alarmTopic } = createStack();
+
+  new LambdaSaturationDetector(stack, 'Detector', {
+    alarmTopic,
+    lambdaFunction: worker(stack),
+    concurrentExecutions: { threshold: 25 },
+  });
+
+  Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 1);
+  expectConcurrentAlarm(stack, 25);
+});
+
+test('does not let alarmConfig.threshold change the concurrent executions alarm', () => {
+  const { stack, alarmTopic } = createStack();
+
+  new LambdaSaturationDetector(stack, 'Detector', {
+    alarmTopic,
+    lambdaFunction: worker(stack),
+    alarmConfig: { threshold: 7 },
+    concurrentExecutions: { threshold: 25 },
+  });
+
+  Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 1);
+  expectConcurrentAlarm(stack, 25);
+});
+
+test.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+  'rejects concurrent executions threshold %p',
+  (threshold) => {
+    const { stack } = createStack();
+
+    expect(() => new LambdaSaturationDetector(stack, 'Detector', {
+      lambdaFunction: worker(stack),
+      concurrentExecutions: { threshold },
+    })).toThrow('threshold must be a finite number greater than 0.');
+    Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 0);
+  },
+);
+
+test('requires lambdaFunction when concurrentExecutions is set', () => {
+  const { stack } = createStack();
+
+  expect(() => new LambdaSaturationDetector(stack, 'Detector', {
+    concurrentExecutions: { threshold: 25 },
+  })).toThrow('lambdaFunction is required.');
+  Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 0);
+});
+
+test('creates no alarms when concurrent executions is invalid after a valid duration signal', () => {
+  const { stack } = createStack();
+
+  expect(() => new LambdaSaturationDetector(stack, 'Detector', {
+    lambdaFunction: worker(stack),
+    durationNearTimeout: {
+      timeout: Duration.seconds(10),
+      p95Ratio: 0.8,
+    },
+    concurrentExecutions: { threshold: 0 },
+  })).toThrow('threshold must be a finite number greater than 0.');
+  Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 0);
+});

@@ -7,11 +7,12 @@
 
 [![View on Construct Hub](https://constructs.dev/badge?package=lambda-saturation-detector)](https://constructs.dev/packages/lambda-saturation-detector)
 
-Creates CloudWatch alarms when a Lambda function's duration nears its timeout. An existing SNS topic is notified when an alarm enters the ALARM state.
+Creates CloudWatch alarms when a Lambda function's duration nears its timeout or its concurrent executions reach a threshold. An existing SNS topic is notified when an alarm enters the ALARM state.
 
 ## Features
 
 - Alarms when p95 or p99 Duration nears the function timeout
+- Alarms when ConcurrentExecutions reaches a threshold
 - Notifies an existing SNS topic on ALARM when a topic is provided
 - Creates no alarms when no signals are configured
 - Validates every signal before creating any alarm
@@ -19,13 +20,13 @@ Creates CloudWatch alarms when a Lambda function's duration nears its timeout. A
 
 ## How it works
 
-1. Pass the function as `lambdaFunction` and the signal as `durationNearTimeout`. Pass an existing SNS topic as `alarmTopic` when notifications are needed. This construct does not create a topic.
-2. Configured signals are validated first. If validation fails, no alarms are created, including alarms for ratios that were already checked.
-3. One CloudWatch alarm is then created for each requested percentile. With no `durationNearTimeout`, the construct creates no alarms.
-4. The threshold is the timeout in milliseconds multiplied by the ratio, rounded to the nearest integer. p95 uses the `p95` statistic and p99 uses `p99`, both on the function's Duration metric.
+1. Pass the function as `lambdaFunction` and at least one signal, `durationNearTimeout` or `concurrentExecutions`. Pass an existing SNS topic as `alarmTopic` when notifications are needed. This construct does not create a topic.
+2. Configured signals are validated first. If validation fails, no alarms are created, including alarms for signals that were already checked.
+3. One CloudWatch alarm is then created for each requested signal. With no signals, the construct creates no alarms.
+4. A duration threshold is the timeout in milliseconds multiplied by the ratio, rounded to the nearest integer. p95 uses the `p95` statistic and p99 uses `p99`, both on the function's Duration metric. A concurrent executions alarm uses ConcurrentExecutions, the Maximum statistic, and the FunctionName dimension. Its threshold is `concurrentExecutions.threshold`. `alarmConfig.threshold` does not change either signal.
 5. The topic is notified only when an alarm enters ALARM. OK and INSUFFICIENT_DATA do not publish to the topic. Omitting `alarmTopic` leaves the alarms without an alarm action.
 
-Period, evaluation periods, and missing-data treatment below are not configurable via props today. The generic threshold of 1 is not used for the duration signal.
+Period, evaluation periods, and missing-data treatment below are not configurable via props today. The generic threshold of 1 is not used for the duration signal or the concurrent executions signal.
 
 | Setting | Default |
 | --- | --- |
@@ -107,11 +108,14 @@ Deploy checklist:
 | Name | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `alarmTopic` | `ITopic` | No | none | Existing SNS topic for the ALARM action. The construct does not create this topic. Omit it to create alarms without an action. |
-| `lambdaFunction` | `IFunction` | When `durationNearTimeout` is set | none | Function whose Duration metric is watched. |
+| `alarmConfig` | `AlarmConfig` | No | threshold `1` | Shared alarm settings. Duration and concurrent executions alarms do not use `threshold`. Period, evaluation periods, and missing-data treatment are not configurable via props today. |
+| `lambdaFunction` | `IFunction` | When `durationNearTimeout` or `concurrentExecutions` is set | none | Function whose metrics are watched. |
 | `durationNearTimeout` | `DurationNearTimeoutOptions` | No | none | p95 and p99 alarms that fire as Duration nears the function timeout. |
 | `durationNearTimeout.timeout` | `Duration` | Yes, when the signal is set | | Function timeout. Must be greater than 0. |
 | `durationNearTimeout.p95Ratio` | `number` | One of the ratios | none | Fraction of `timeout` for p95. Greater than 0 and at most 1. |
 | `durationNearTimeout.p99Ratio` | `number` | One of the ratios | none | Fraction of `timeout` for p99. Greater than 0 and at most 1. |
+| `concurrentExecutions` | `ConcurrentExecutionsOptions` | No | none | Alarm when ConcurrentExecutions reaches `threshold`. Uses the Maximum statistic and the FunctionName dimension. |
+| `concurrentExecutions.threshold` | `number` | Yes, when the signal is set | | Finite number greater than 0. `alarmConfig.threshold` does not change this value. |
 | `AlarmConfig.period` | `Duration` | No | 5 minutes | Alarm period. Not configurable via props today. |
 | `AlarmConfig.evaluationPeriods` | `number` | No | `1` | Evaluation periods. Not configurable via props today. |
 | `AlarmConfig.treatMissingData` | `TreatMissingData` | No | `NOT_BREACHING` | Missing-data treatment. Not configurable via props today. |

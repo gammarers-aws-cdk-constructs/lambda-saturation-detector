@@ -29,6 +29,15 @@ const DURATION_P95_ALARM_ID = 'DurationP95';
 /** Construct id for the p99 duration alarm. */
 const DURATION_P99_ALARM_ID = 'DurationP99';
 
+/** ConcurrentExecutions metric on the AWS/Lambda namespace. */
+const METRIC_CONCURRENT_EXECUTIONS = 'ConcurrentExecutions';
+
+/** Maximum statistic for the concurrent executions alarm. */
+const STATISTIC_MAXIMUM = Stats.MAXIMUM;
+
+/** Construct id for the concurrent executions alarm. */
+const CONCURRENT_EXECUTIONS_ALARM_ID = 'ConcurrentExecutions';
+
 type DurationRatioField = 'p95Ratio' | 'p99Ratio';
 
 /**
@@ -351,6 +360,85 @@ const resolveDurationSignals = (props: LambdaSaturationDetectorProps): SignalDra
 };
 
 /**
+ * Rejects a threshold that is not finite or is not greater than 0.
+ *
+ * @param threshold Candidate threshold on {@link ConcurrentExecutionsOptions}.
+ * @throws Error when `threshold` is not a finite number greater than 0.
+ */
+const ensurePositiveThreshold = (threshold: number): void => {
+  if (Number.isFinite(threshold) && threshold > 0) {
+    return;
+  }
+
+  throw new Error('threshold must be a finite number greater than 0.');
+};
+
+/**
+ * Builds the concurrent executions alarm draft.
+ *
+ * The threshold is the value on the options. {@link LambdaSaturationDetectorProps.alarmConfig}
+ * is not applied, so its threshold cannot change this alarm.
+ *
+ * @param lambdaFunction Function whose ConcurrentExecutions metric is watched.
+ * @param threshold Checked threshold.
+ * @returns A draft that has not created an alarm yet.
+ */
+const concurrentExecutionsSignal = (
+  lambdaFunction: IFunction,
+  threshold: number,
+): SignalDraft => {
+  const resolved = resolveAlarmConfig({ threshold });
+
+  return {
+    id: CONCURRENT_EXECUTIONS_ALARM_ID,
+    metric: lambdaFunction.metric(METRIC_CONCURRENT_EXECUTIONS, {
+      statistic: STATISTIC_MAXIMUM,
+      period: resolved.period,
+    }),
+    comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    alarm: resolved,
+  };
+};
+
+/**
+ * Validates the concurrent executions signal, then returns its alarm draft.
+ *
+ * An omitted option produces no drafts. Any failure throws before an alarm exists.
+ *
+ * @param props Detector properties.
+ * @returns One draft, or an empty list when the signal is not configured.
+ * @throws Error when `threshold` is invalid or `lambdaFunction` is missing.
+ */
+const resolveConcurrentExecutionsSignals = (props: LambdaSaturationDetectorProps): SignalDraft[] => {
+  const options = props.concurrentExecutions;
+  if (options === undefined) {
+    return [];
+  }
+
+  ensurePositiveThreshold(options.threshold);
+  const lambdaFunction = props.lambdaFunction;
+  if (lambdaFunction === undefined) {
+    throw new Error('lambdaFunction is required.');
+  }
+
+  return [concurrentExecutionsSignal(lambdaFunction, options.threshold)];
+};
+
+/**
+ * Validates every configured signal, then returns the drafts to create.
+ *
+ * Duration is checked before concurrent executions. A failure in either throws
+ * before {@link applySignals} creates an alarm.
+ *
+ * @param props Detector properties.
+ * @returns Drafts for the configured signals. Empty when none are configured.
+ */
+const resolveSignals = (props: LambdaSaturationDetectorProps): SignalDraft[] => [
+  ...resolveDurationSignals(props),
+  ...resolveConcurrentExecutionsSignals(props),
+];
+
+/**
  * Optional overrides for a saturation alarm.
  *
  * Omitted fields use threshold 1, a 5 minute period, 1 evaluation period,
@@ -408,6 +496,21 @@ export interface DurationNearTimeoutOptions {
 }
 
 /**
+ * Alarm when ConcurrentExecutions reaches a threshold.
+ *
+ * The metric is AWS/Lambda ConcurrentExecutions with the FunctionName dimension and the Maximum statistic.
+ * `alarmConfig.threshold` does not change this threshold.
+ */
+export interface ConcurrentExecutionsOptions {
+  /**
+   * Alarm threshold.
+   *
+   * Must be a finite number greater than 0.
+   */
+  readonly threshold: number;
+}
+
+/**
  * Properties for {@link LambdaSaturationDetector}.
  */
 export interface LambdaSaturationDetectorProps {
@@ -421,9 +524,19 @@ export interface LambdaSaturationDetectorProps {
    */
   readonly alarmTopic?: ITopic;
   /**
-   * Function whose Duration metric is watched.
+   * Shared alarm settings.
    *
-   * Required when `durationNearTimeout` is set.
+   * Duration alarms keep their computed threshold, and concurrent executions use
+   * {@link ConcurrentExecutionsOptions.threshold}. Neither signal uses `alarmConfig.threshold`.
+   * Period, evaluation periods, and missing-data treatment stay at the detector defaults.
+   *
+   * @default threshold 1
+   */
+  readonly alarmConfig?: AlarmConfig;
+  /**
+   * Function whose metrics are watched.
+   *
+   * Required when `durationNearTimeout` or `concurrentExecutions` is set.
    */
   readonly lambdaFunction?: IFunction;
   /**
@@ -432,6 +545,12 @@ export interface LambdaSaturationDetectorProps {
    * @default no duration alarms
    */
   readonly durationNearTimeout?: DurationNearTimeoutOptions;
+  /**
+   * Alarm when concurrent executions reach {@link ConcurrentExecutionsOptions.threshold}.
+   *
+   * @default no concurrent executions alarm
+   */
+  readonly concurrentExecutions?: ConcurrentExecutionsOptions;
 }
 
 /**
@@ -451,7 +570,7 @@ export class LambdaSaturationDetector extends Construct {
   /**
    * @param scope Parent construct.
    * @param id Construct id.
-   * @param props Function, duration signal, and optional alarm topic. The construct does not create a topic.
+   * @param props Function, signals, and optional alarm topic. The construct does not create a topic.
    */
   constructor(scope: Construct, id: string, props: LambdaSaturationDetectorProps) {
     super(scope, id);
@@ -460,7 +579,7 @@ export class LambdaSaturationDetector extends Construct {
 
     // Validation finishes before any alarm is created, so a signal added later
     // cannot leave a partial set of alarms behind.
-    const signals = resolveDurationSignals(props);
+    const signals = resolveSignals(props);
     applySignals(this, this.alarmTopic, signals);
   }
 }
