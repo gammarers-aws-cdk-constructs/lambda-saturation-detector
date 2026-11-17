@@ -132,15 +132,23 @@ const ratioOptions = (field: 'p95Ratio' | 'p99Ratio', value: number): DurationNe
   };
 };
 
+const FunctionPresence = {
+  Present: 'present',
+  Omitted: 'omitted',
+} as const;
+
+type FunctionPresence = typeof FunctionPresence[keyof typeof FunctionPresence];
+
 const expectDurationRejected = (
   durationNearTimeout: DurationNearTimeoutOptions,
   message: string,
-  withFunction = false,
+  functionPresence: FunctionPresence,
 ) => {
   const { stack } = createStack();
+  const lambdaFunction = functionPresence === FunctionPresence.Present ? worker(stack) : undefined;
 
   expect(() => new LambdaSaturationDetector(stack, 'Detector', {
-    lambdaFunction: withFunction ? worker(stack) : undefined,
+    lambdaFunction,
     durationNearTimeout,
   })).toThrow(message);
   Template.fromStack(stack).resourceCountIs('AWS::CloudWatch::Alarm', 0);
@@ -260,20 +268,20 @@ test.each([
   ['p99Ratio', 1.1, 'p99Ratio must be greater than 0 and at most 1.'],
   ['p99Ratio', Number.NaN, 'p99Ratio must be greater than 0 and at most 1.'],
 ] as const)('rejects %s %p', (field, value, message) => {
-  expectDurationRejected(ratioOptions(field, value), message, true);
+  expectDurationRejected(ratioOptions(field, value), message, FunctionPresence.Present);
 });
 
 test('rejects a timeout of 0', () => {
   expectDurationRejected({
     timeout: Duration.millis(0),
     p95Ratio: 1,
-  }, 'timeout must be greater than 0.', true);
+  }, 'timeout must be greater than 0.', FunctionPresence.Present);
 });
 
 test('rejects duration options when both ratios are omitted', () => {
   expectDurationRejected({
     timeout: Duration.seconds(10),
-  }, 'p95Ratio or p99Ratio is required.');
+  }, 'p95Ratio or p99Ratio is required.', FunctionPresence.Omitted);
 });
 
 test.each(['p95Ratio', 'p99Ratio'] as const)('rejects a rounded threshold of 0 for %s', (field) => {
@@ -286,14 +294,14 @@ test.each(['p95Ratio', 'p99Ratio'] as const)('rejects a rounded threshold of 0 f
     ? 'timeout and p95Ratio round to a threshold below 1.'
     : 'timeout and p99Ratio round to a threshold below 1.';
 
-  expectDurationRejected(durationNearTimeout, message, true);
+  expectDurationRejected(durationNearTimeout, message, FunctionPresence.Present);
 });
 
 test('requires lambdaFunction when durationNearTimeout is set', () => {
   expectDurationRejected({
     timeout: Duration.seconds(10),
     p95Ratio: 0.8,
-  }, 'lambdaFunction is required.');
+  }, 'lambdaFunction is required.', FunctionPresence.Omitted);
 });
 
 test('creates no alarms when one duration ratio is invalid', () => {
@@ -301,7 +309,7 @@ test('creates no alarms when one duration ratio is invalid', () => {
     timeout: Duration.seconds(10),
     p95Ratio: 0.8,
     p99Ratio: Number.NaN,
-  }, 'p99Ratio must be greater than 0 and at most 1.', true);
+  }, 'p99Ratio must be greater than 0 and at most 1.', FunctionPresence.Present);
 });
 
 const expectConcurrentAlarm = (stack: Stack, threshold: number) => {
