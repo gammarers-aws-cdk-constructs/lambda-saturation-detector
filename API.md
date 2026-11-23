@@ -4,6 +4,8 @@
 
 ### LambdaSaturationDetector <a name="LambdaSaturationDetector" id="lambda-saturation-detector.LambdaSaturationDetector"></a>
 
+- *Implements:* constructs.IConstruct, constructs.IDependable
+
 CloudWatch alarms for configured Lambda saturation signals.
 
 Every signal is validated before any alarm is created. With no signals configured,
